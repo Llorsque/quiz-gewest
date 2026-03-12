@@ -211,6 +211,7 @@
     margin-bottom: 16px;
     opacity: 0; transform: translateX(-50px);
     transition: opacity .55s ease, transform .55s ease;
+    will-change: transform;
   }
   .score-row.top { margin-bottom: 22px; }
   .score-row.visible { opacity: 1; transform: translateX(0); }
@@ -256,7 +257,6 @@
   .rank-1 .bar-track { height: 20px; }
   .bar-fill {
     height: 100%; border-radius: 99px; width: 0%;
-    transition: width 1.4s cubic-bezier(.22,1,.36,1);
     box-shadow: 0 2px 8px rgba(0,0,0,.2);
   }
 
@@ -527,6 +527,8 @@ function resetAll() {
     revealedRound: 0,
     setupDone: false,
   };
+  rowElements = {};
+  prevBarPcts = {};
   saveState();
   document.getElementById('inp-title').value  = 'Pub Quiz';
   document.getElementById('inp-rounds').value = '6';
@@ -614,69 +616,136 @@ function renderAdmin() {
 }
 
 // ═══════════════════════════════════════════════════════
-// RENDER DISPLAY
+// RENDER DISPLAY  –  FLIP position animation
 // ═══════════════════════════════════════════════════════
-let lastRoundRendered = -1;
+let rowElements = {};   // teamId → DOM element
+let prevBarPcts = {};   // teamId → last rendered bar %
+
+function buildCardHTML(team, idx, maxPts, barPct) {
+  const colour  = teamColour(team.id);
+  const rankCls = idx === 0 ? 'r1' : idx === 1 ? 'r2' : idx === 2 ? 'r3' : '';
+  const pct     = (team.total / maxPts * 100).toFixed(1);
+  const showPct = barPct !== undefined ? barPct : pct;
+  return `
+    <div class="score-card${idx === 0 ? ' rank-1' : ''}">
+      <div class="rank-badge ${rankCls}">${idx + 1}</div>
+      <div class="score-main">
+        <div class="team-label">${esc(team.name)}</div>
+        <div class="bar-track">
+          <div class="bar-fill" id="bar-${team.id}"
+            style="background:linear-gradient(90deg,${colour}cc,${colour});
+                   box-shadow:0 2px 10px ${colour}66;width:${showPct}%"
+            data-pct="${pct}">
+          </div>
+        </div>
+      </div>
+      <div class="score-pts">${team.total}<span>pt</span></div>
+    </div>`;
+}
 
 function renderDisplay() {
   const { quizTitle, totalRounds, revealedRound, teams } = state;
 
-  document.getElementById('d-quiz-title').textContent = quizTitle;
-  document.getElementById('d-round-num').textContent  = revealedRound;
+  document.getElementById('d-quiz-title').textContent  = quizTitle;
+  document.getElementById('d-round-num').textContent   = revealedRound;
   document.getElementById('d-round-total').textContent = '/' + totalRounds;
 
   const board = document.getElementById('scoreboard');
-  const waiting = document.getElementById('display-waiting');
 
   if (revealedRound === 0 || teams.length === 0) {
-    board.innerHTML = '<div class="waiting" id="display-waiting">Wacht op de eerste ronde…</div>';
-    lastRoundRendered = 0;
+    board.innerHTML = '<div class="waiting">Wacht op de eerste ronde…</div>';
+    rowElements = {};
+    prevBarPcts = {};
     return;
   }
 
-  const ranked  = getRanked(revealedRound);
-  const maxPts  = Math.max(...ranked.map(t => t.total), 1);
-  const animate = revealedRound !== lastRoundRendered;
-  lastRoundRendered = revealedRound;
+  const ranked = getRanked(revealedRound);
+  const maxPts = Math.max(...ranked.map(t => t.total), 1);
 
-  board.innerHTML = ranked.map((team, idx) => {
-    const pct    = (team.total / maxPts * 100).toFixed(1);
-    const colour = teamColour(team.id);
-    const rankCls = idx === 0 ? 'r1' : idx === 1 ? 'r2' : idx === 2 ? 'r3' : '';
-    const delay  = idx * 90;
-    return `
-      <div class="score-row${idx===0?' top':''}" id="row-${team.id}" style="transition-delay:${delay}ms">
-        <div class="score-card${idx===0?' rank-1':''}">
-          <div class="rank-badge ${rankCls}">${idx + 1}</div>
-          <div class="score-main">
-            <div class="team-label">${esc(team.name)}</div>
-            <div class="bar-track">
-              <div class="bar-fill" id="bar-${team.id}"
-                style="background:linear-gradient(90deg,${colour}cc,${colour});box-shadow:0 2px 10px ${colour}66"
-                data-pct="${pct}">
-              </div>
-            </div>
-          </div>
-          <div class="score-pts">${team.total}<span>pt</span></div>
-        </div>
-      </div>`;
-  }).join('');
-
-  // Animate rows in
-  requestAnimationFrame(() => {
+  // ── FIRST RENDER: build rows and fly them in from the left ──────────────
+  if (Object.keys(rowElements).length === 0) {
+    board.innerHTML = '';
     ranked.forEach((team, idx) => {
-      const row = document.getElementById('row-' + team.id);
-      const delay = idx * 90;
-      setTimeout(() => {
-        if (row) row.classList.add('visible');
-        // then animate bar
-        setTimeout(() => {
-          const bar = document.getElementById('bar-' + team.id);
-          if (bar) bar.style.width = bar.dataset.pct + '%';
-        }, animate ? 350 : 0);
-      }, animate ? delay : 0);
+      const div = document.createElement('div');
+      div.className = 'score-row' + (idx === 0 ? ' top' : '');
+      div.id = 'row-' + team.id;
+      div.innerHTML = buildCardHTML(team, idx, maxPts, 0);
+      board.appendChild(div);
+      rowElements[team.id] = div;
     });
+    requestAnimationFrame(() => {
+      ranked.forEach((team, idx) => {
+        setTimeout(() => {
+          const el = rowElements[team.id];
+          if (el) el.classList.add('visible');
+          setTimeout(() => {
+            const bar = document.getElementById('bar-' + team.id);
+            const pct = (team.total / maxPts * 100).toFixed(1);
+            if (bar) bar.style.width = pct + '%';
+            prevBarPcts[team.id] = pct;
+          }, 350);
+        }, idx * 90);
+      });
+    });
+    return;
+  }
+
+  // ── SUBSEQUENT RENDERS: FLIP ────────────────────────────────────────────
+
+  // F – record current (old) top positions
+  const firstTops = {};
+  ranked.forEach(team => {
+    const el = rowElements[team.id];
+    if (el) firstTops[team.id] = el.getBoundingClientRect().top;
   });
+
+  // L – update card content (keep old bar width during movement) & reorder DOM
+  ranked.forEach((team, idx) => {
+    const el = rowElements[team.id];
+    if (!el) return;
+    el.className = 'score-row visible' + (idx === 0 ? ' top' : '');
+    el.innerHTML = buildCardHTML(team, idx, maxPts, prevBarPcts[team.id] ?? 0);
+    board.appendChild(el); // appending re-orders without destroying the element
+  });
+
+  // L – measure new positions
+  const lastTops = {};
+  ranked.forEach(team => {
+    const el = rowElements[team.id];
+    if (el) lastTops[team.id] = el.getBoundingClientRect().top;
+  });
+
+  // I – snap elements back to their old visual position (no transition)
+  ranked.forEach(team => {
+    const el    = rowElements[team.id];
+    const delta = (firstTops[team.id] ?? 0) - (lastTops[team.id] ?? 0);
+    if (!el) return;
+    el.style.transition = 'none';
+    el.style.transform  = delta !== 0 ? `translateY(${delta}px)` : 'none';
+  });
+
+  // P – play: release transforms → elements glide to new positions
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    ranked.forEach((team, idx) => {
+      const el = rowElements[team.id];
+      if (!el) return;
+      el.style.transition = 'transform 0.8s cubic-bezier(.22,1,.36,1)';
+      el.style.transform  = 'translateY(0)';
+    });
+
+    // After movement settles, animate bar widths to new values
+    setTimeout(() => {
+      ranked.forEach(team => {
+        const bar = document.getElementById('bar-' + team.id);
+        const pct = (team.total / maxPts * 100).toFixed(1);
+        if (bar) {
+          bar.style.transition = 'width 1.2s cubic-bezier(.22,1,.36,1)';
+          bar.style.width = pct + '%';
+        }
+        prevBarPcts[team.id] = pct;
+      });
+    }, 600);
+  }));
 }
 
 // ═══════════════════════════════════════════════════════
