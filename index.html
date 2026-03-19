@@ -130,6 +130,24 @@
   .sync-hint { font-size: 12px; color: var(--slate-400); margin-top: 8px; line-height: 1.6; }
   .sync-hint a { color: var(--indigo-500); text-decoration: none; }
   .sync-hint a:hover { text-decoration: underline; }
+  .btn-sync-now {
+    background: linear-gradient(135deg, var(--indigo-700), var(--indigo-500));
+    color: #fff; border: none; padding: 11px 24px; border-radius: 8px;
+    font-weight: 800; font-size: 15px; cursor: pointer;
+    font-family: 'Outfit', sans-serif; margin-right: 10px;
+    box-shadow: 0 4px 16px rgba(99,102,241,.3);
+    transition: opacity .15s, transform .12s;
+  }
+  .btn-sync-now:hover { opacity: .88; transform: translateY(-1px); }
+  .btn-sync-now:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+  .btn-sync-pull {
+    background: transparent; color: var(--indigo-500);
+    border: 1.5px solid var(--indigo-100); padding: 10px 20px;
+    border-radius: 8px; font-weight: 700; font-size: 14px;
+    cursor: pointer; font-family: 'Outfit', sans-serif;
+    transition: background .15s;
+  }
+  .btn-sync-pull:hover { background: var(--indigo-50); }
 
   .score-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; min-width: 480px; }
@@ -462,6 +480,14 @@
         <div class="sync-dot" id="sync-dot"></div>
         <span id="sync-msg">Niet verbonden — vul token in en klik Verbinden</span>
       </div>
+      <div id="sync-actions" style="display:none; margin-top:14px;">
+        <button class="btn-sync-now" id="btn-sync-now" onclick="gistSyncNow()">
+          ☁️ Opslaan &amp; Sync
+        </button>
+        <button class="btn-sync-pull" onclick="gistPullNow()">
+          ↓ Haal nieuwste op
+        </button>
+      </div>
       <div class="sync-hint">
         Token aanmaken: <a href="https://github.com/settings/tokens/new" target="_blank">github.com/settings/tokens/new</a>
         → selecteer alleen <strong>gist</strong> scope → kopieer token hierboven.
@@ -591,7 +617,7 @@ async function gistConnect() {
     if (ok) {
       gistSetStatus('ok', 'Verbonden met bestaande Gist ✓');
       gistSaveConfig();
-      gistStartPoll();
+      document.getElementById('sync-actions').style.display = '';
     }
   } else {
     // Create new Gist
@@ -611,7 +637,7 @@ async function gistConnect() {
       if (gistEl) gistEl.value = gistId;
       gistSetStatus('ok', `Nieuwe Gist aangemaakt: ${gistId} ✓`);
       gistSaveConfig();
-      gistStartPoll();
+      document.getElementById('sync-actions').style.display = '';
     } catch(e) {
       gistSetStatus('err', 'Aanmaken mislukt: ' + e.message);
     }
@@ -637,15 +663,12 @@ async function gistPush(silent = true) {
   }
 }
 
-async function gistPull() {
+async function gistPull(force = false) {
   if (!gistToken || !gistId) return;
   try {
-    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-      headers: {
-        Authorization: 'token ' + gistToken,
-        'If-None-Match': lastGistEtag
-      }
-    });
+    const headers = { Authorization: 'token ' + gistToken };
+    if (!force) headers['If-None-Match'] = lastGistEtag;
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
     if (res.status === 304) return; // not modified
     if (!res.ok) { gistSetStatus('err', 'Pull mislukt: HTTP ' + res.status); return; }
     lastGistEtag = res.headers.get('ETag') || '';
@@ -653,21 +676,14 @@ async function gistPull() {
     const content = data.files?.[GIST_FILENAME]?.content;
     if (!content) return;
     const remote  = JSON.parse(content);
-    // Only apply if remote is newer / different
-    if (JSON.stringify(remote) !== JSON.stringify(state)) {
+    if (force || JSON.stringify(remote) !== JSON.stringify(state)) {
       state = remote;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       if (bc) bc.postMessage({ type: 'state', state });
       if (currentPage() === 'admin')   renderAdmin();
       if (currentPage() === 'display') renderDisplay();
-      gistSetStatus('ok', 'Gesynchroniseerd ✓ — ' + new Date().toLocaleTimeString());
     }
-  } catch(e) { /* silent fail on poll */ }
-}
-
-function gistStartPoll() {
-  clearInterval(syncPollInterval);
-  syncPollInterval = setInterval(gistPull, 4000);
+  } catch(e) { /* silent fail */ }
 }
 
 function gistSaveConfig() {
@@ -685,10 +701,10 @@ function gistLoadConfig() {
       if (tokenEl) tokenEl.value = gistToken;
       if (gistEl)  gistEl.value  = gistId;
       gistSetStatus('busy', 'Herstellen verbinding…');
-      gistPull().then(() => {
+      gistPull(true).then(() => {
         gistSetStatus('ok', 'Verbonden ✓');
-        gistStartPoll();
         syncEnabled = true;
+        document.getElementById('sync-actions').style.display = '';
       });
     }
   } catch(e) {}
@@ -700,11 +716,41 @@ function gistLoadConfig() {
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (bc) bc.postMessage({ type: 'state', state });
-  // Push to Gist after every change (debounced)
-  if (syncEnabled) {
-    clearTimeout(saveState._t);
-    saveState._t = setTimeout(() => gistPush(false), 600);
+  // Mark that there are unsaved changes
+  if (syncEnabled) markUnsaved();
+}
+
+function markUnsaved() {
+  const btn = document.getElementById('btn-sync-now');
+  if (btn) {
+    btn.textContent = '☁️ Opslaan & Sync ●';
+    btn.style.boxShadow = '0 4px 16px rgba(99,102,241,.5)';
   }
+}
+
+function markSaved() {
+  const btn = document.getElementById('btn-sync-now');
+  if (btn) {
+    btn.textContent = '☁️ Opslaan & Sync';
+    btn.style.boxShadow = '';
+  }
+}
+
+async function gistSyncNow() {
+  const btn = document.getElementById('btn-sync-now');
+  if (btn) btn.disabled = true;
+  const ok = await gistPush(false);
+  if (ok) {
+    markSaved();
+    gistSetStatus('ok', 'Opgeslagen & gesynchroniseerd ✓ — ' + new Date().toLocaleTimeString());
+  }
+  if (btn) btn.disabled = false;
+}
+
+async function gistPullNow() {
+  gistSetStatus('busy', 'Ophalen…');
+  await gistPull(true);
+  gistSetStatus('ok', 'Opgehaald ✓ — ' + new Date().toLocaleTimeString());
 }
 
 function loadState() {
