@@ -153,7 +153,6 @@
   ════════════════════════════════ */
   #page-display {
     background: linear-gradient(160deg,#f8faff 0%,#eef2ff 50%,#e0e7ff 100%);
-    min-height: 100vh; position: relative; overflow: hidden;
   }
   .bg-grid {
     position: fixed; inset: 0; pointer-events: none;
@@ -166,69 +165,87 @@
   .bg-blob-1 { width: 500px; height: 500px; background: #c7d2fe; top: -180px; right: -100px; }
   .bg-blob-2 { width: 400px; height: 400px; background: #ddd6fe; bottom: -120px; left: -80px; }
 
+  /* ── Display page: full-height, no scroll ── */
+  #page-display {
+    height: 100vh !important;
+    overflow: hidden !important;
+    display: flex;
+    flex-direction: column;
+  }
+
   .display-header {
     background: linear-gradient(90deg,#1e1b4b 0%,#312e81 55%,#4338ca 100%);
-    padding: clamp(24px,3.5vw,56px) clamp(36px,5.5vw,90px);
+    padding: 1.6vh 4vw;
     display: flex; align-items: center; justify-content: space-between;
-    box-shadow: 0 6px 48px rgba(67,56,202,.35);
+    box-shadow: 0 4px 32px rgba(67,56,202,.35);
     position: relative; z-index: 10;
+    flex-shrink: 0;
   }
   .display-header .subtitle {
-    color: rgba(199,210,254,.65); font-size: clamp(13px,1.1vw,22px); letter-spacing: 5px;
-    text-transform: uppercase; margin-bottom: 6px; font-weight: 700;
+    color: rgba(199,210,254,.65); font-size: 1vw; letter-spacing: 4px;
+    text-transform: uppercase; margin-bottom: 2px; font-weight: 700;
   }
   .display-header h1 {
-    color: #fff; font-weight: 900; font-size: clamp(40px,6vw,96px);
-    letter-spacing: -2px; line-height: 1;
+    color: #fff; font-weight: 900; font-size: 5.2vh;
+    letter-spacing: -1px; line-height: 1;
   }
   .display-header h1 .round-num   { color: #818cf8; }
   .display-header h1 .round-total { color: rgba(255,255,255,.35); font-size: .55em; }
   .btn-to-admin {
     background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
-    color: rgba(255,255,255,.6); padding: 8px 18px; border-radius: 8px;
-    font-size: 13px; font-weight: 600; letter-spacing: .5px; flex-shrink: 0;
+    color: rgba(255,255,255,.6); padding: 6px 16px; border-radius: 8px;
+    font-size: .9vw; font-weight: 600; letter-spacing: .5px; flex-shrink: 0;
   }
   .btn-to-admin:hover { background: rgba(255,255,255,.18); }
 
-  /* ── Scoreboard: relative container; tiles anchor to it ── */
+  /* ── Scoreboard wrap: takes all remaining vertical space ── */
   .scoreboard-wrap {
     position: relative; z-index: 5;
-    padding: clamp(28px,4vw,60px) clamp(36px,5.5vw,90px) 80px;
-    max-width: 1600px; margin: 0 auto;
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 2vh 4vw 2vh;
+    max-width: 100%;
+    box-sizing: border-box;
   }
+
+  /* Top-5 tile container: fixed height set by JS */
   #scoreboard {
     position: relative;
     width: 100%;
+    flex-shrink: 0;
     transition: height 0.9s cubic-bezier(.34,1.1,.64,1);
   }
 
-  /* ── Team tile: absolutely positioned, moves via `top` ── */
+  /* Rest list: fills remaining space */
+  #rest-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* ── Team tile ── */
   .score-tile {
     position: absolute;
     left: 0; right: 0;
-    /* top + height set by JS */
     opacity: 0;
     transform: translateX(-80px);
-    /* Entry animation (opacity + X).
-       After .live is added, only `top` transitions for rank slides. */
     transition: top 0.9s cubic-bezier(.34,1.1,.64,1),
                 opacity 0.4s ease,
                 transform 0.4s ease;
     will-change: top, opacity, transform;
   }
-  .score-tile.live {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  .score-tile.live { opacity: 1; transform: translateX(0); }
 
-  /* ── Visual card inside the tile ── */
   .score-card {
     height: 100%;
-    display: flex; align-items: center; gap: clamp(16px,2vw,36px);
-    padding: 0 clamp(20px,2.5vw,44px);
+    display: flex; align-items: center; gap: 1.8vw;
+    padding: 0 2vw;
     background: rgba(255,255,255,.8);
     backdrop-filter: blur(16px);
-    border-radius: 22px;
+    border-radius: 1.2vw;
     border: 2px solid rgba(255,255,255,.9);
     box-shadow: 0 2px 14px rgba(0,0,0,.07);
     transition: background 0.7s, border-color 0.7s, box-shadow 0.7s;
@@ -240,17 +257,16 @@
   }
 
   .rank-badge {
-    width: clamp(52px,4.5vw,80px); height: clamp(52px,4.5vw,80px);
+    width: 6vh; height: 6vh; min-width: 36px; min-height: 36px;
     border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 900; font-size: clamp(22px,2vw,38px);
-    border: 3px solid var(--slate-200); color: var(--slate-400);
+    font-weight: 900; font-size: 2.4vh;
+    border: 2.5px solid var(--slate-200); color: var(--slate-400);
     transition: width .6s, height .6s, font-size .6s,
                 border-color .6s, color .6s, background .6s;
   }
   .rank-badge.r1 {
-    width: clamp(62px,5.5vw,96px); height: clamp(62px,5.5vw,96px);
-    font-size: clamp(28px,2.6vw,48px);
+    width: 7.2vh; height: 7.2vh; font-size: 3vh;
     border-color: var(--gold); color: var(--gold);
     background: radial-gradient(circle,rgba(245,166,35,.24),rgba(245,166,35,.04));
   }
@@ -265,82 +281,86 @@
 
   .score-main { flex: 1; min-width: 0; }
   .team-label {
-    font-weight: 800; color: var(--indigo-900); margin-bottom: 10px;
-    font-size: clamp(20px,2.6vw,44px);
+    font-weight: 800; color: var(--indigo-900); margin-bottom: .5vh;
+    font-size: 2.4vh;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    letter-spacing: -.3px;
+    letter-spacing: -.2px;
   }
 
   .bar-track {
-    height: clamp(16px,1.4vw,26px); background: rgba(99,102,241,.09);
+    height: 1.2vh; min-height: 8px; background: rgba(99,102,241,.09);
     border-radius: 99px; overflow: hidden;
   }
   .bar-fill {
     height: 100%; border-radius: 99px; width: 0%;
     box-shadow: 0 2px 8px rgba(0,0,0,.18);
-    /* width transition injected by JS */
   }
 
   .score-pts {
-    font-weight: 900; font-size: clamp(32px,3.8vw,66px); color: var(--indigo-500);
-    flex-shrink: 0; text-align: right; letter-spacing: -2px; min-width: clamp(70px,6vw,120px);
+    font-weight: 900; font-size: 3.8vh; color: var(--indigo-500);
+    flex-shrink: 0; text-align: right; letter-spacing: -1px; min-width: 5vw;
     transition: color .7s;
   }
   .score-card.rank-1 .score-pts { color: var(--gold); }
-  .score-pts span { font-size: .38em; font-weight: 700; color: var(--slate-400); margin-left: 3px; }
+  .score-pts span { font-size: .38em; font-weight: 700; color: var(--slate-400); margin-left: 2px; }
 
   .waiting {
-    text-align: center; padding-top: 80px;
-    color: var(--indigo-500); font-size: 22px; opacity: .5; font-weight: 600;
+    text-align: center; padding-top: 10vh;
+    color: var(--indigo-500); font-size: 2.5vh; opacity: .5; font-weight: 600;
   }
 
-  /* ── Divider between top-5 and rest ── */
+  /* ── Divider ── */
   .rest-divider {
-    display: flex; align-items: center; gap: 16px;
-    margin: clamp(16px,2vw,32px) 0 clamp(12px,1.5vw,24px);
+    display: flex; align-items: center; gap: 12px;
+    margin: 1.2vh 0 .8vh;
+    flex-shrink: 0;
   }
   .rest-divider-line {
-    flex: 1; height: 2px;
+    flex: 1; height: 1.5px;
     background: linear-gradient(90deg, rgba(99,102,241,.25), rgba(99,102,241,.06));
     border-radius: 99px;
   }
   .rest-divider-label {
-    font-size: clamp(11px,.9vw,16px); font-weight: 800; letter-spacing: 3px;
-    text-transform: uppercase; color: rgba(99,102,241,.45);
+    font-size: .85vw; font-weight: 800; letter-spacing: 3px;
+    text-transform: uppercase; color: rgba(99,102,241,.4);
     white-space: nowrap;
   }
 
-  /* ── 2-column compact list for rank 6+ ── */
+  /* ── 2-col compact rest list ── */
   .rest-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: clamp(5px,.5vw,10px) clamp(16px,2vw,36px);
+    gap: .5vh 2vw;
+    flex: 1;
+    min-height: 0;
+    align-content: start;
   }
+  .rest-col { display: flex; flex-direction: column; gap: .5vh; }
 
   .rest-row {
-    display: flex; align-items: center; gap: clamp(8px,1vw,16px);
-    background: rgba(255,255,255,.6);
-    border-radius: 10px;
+    display: flex; align-items: center; gap: 1vw;
+    background: rgba(255,255,255,.62);
+    border-radius: .6vw;
     border: 1.5px solid rgba(255,255,255,.85);
-    padding: clamp(6px,.7vw,12px) clamp(10px,1.2vw,20px);
-    opacity: 0; transform: translateY(10px);
+    padding: .7vh 1.2vw;
+    opacity: 0; transform: translateY(6px);
     transition: opacity .4s ease, transform .4s ease;
   }
   .rest-row.live { opacity: 1; transform: translateY(0); }
 
   .rest-rank {
-    font-size: clamp(12px,1.1vw,20px); font-weight: 900;
-    color: var(--slate-400); min-width: clamp(22px,2vw,36px);
+    font-size: 1.55vh; font-weight: 900;
+    color: var(--slate-400); min-width: 2.2vw;
     text-align: center; flex-shrink: 0;
   }
   .rest-name {
-    flex: 1; font-size: clamp(13px,1.2vw,22px); font-weight: 700;
+    flex: 1; font-size: 1.65vh; font-weight: 700;
     color: var(--indigo-900);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .rest-pts {
-    font-size: clamp(14px,1.3vw,24px); font-weight: 900;
-    color: var(--indigo-500); flex-shrink: 0; letter-spacing: -.5px;
+    font-size: 1.7vh; font-weight: 900;
+    color: var(--indigo-500); flex-shrink: 0; letter-spacing: -.3px;
     font-family: 'DM Mono', monospace;
   }
 </style>
@@ -434,8 +454,34 @@
 // ═══════════════════════════════════════════════════════
 // SLOT DIMENSIONS  (keep in sync with CSS vars)
 // ═══════════════════════════════════════════════════════
-const SLOT_H   = 104;  // px per tile — 86-inch, leaves room for rest list
-const SLOT_GAP = 14;   // px between tiles
+// SLOT_H is computed dynamically — see computeSlotH()
+let SLOT_H   = 100;
+let SLOT_GAP = 12;
+
+function computeSlotH(numRestRows) {
+  const header      = document.querySelector('.display-header');
+  const headerH     = header ? header.offsetHeight : 80;
+  const wrapPadV    = window.innerHeight * 0.04; // 2vh top + 2vh bottom
+  const available   = window.innerHeight - headerH - wrapPadV * 2;
+
+  // Divider height (only when there are rest rows)
+  const dividerH    = numRestRows > 0 ? window.innerHeight * 0.038 : 0;
+
+  // Rest rows each get ~2.8vh
+  const restRowH    = window.innerHeight * 0.028;
+  const restGapH    = window.innerHeight * 0.005;
+  const restCols    = Math.ceil(numRestRows / 2);
+  const restH       = numRestRows > 0
+    ? restCols * (restRowH + restGapH) + dividerH
+    : 0;
+
+  const topH        = available - restH;
+  const gap         = window.innerHeight * 0.014;
+  const slotH       = (topH - (TOP_N - 1) * gap) / TOP_N;
+
+  SLOT_H   = Math.max(slotH, 48);
+  SLOT_GAP = gap;
+}
 
 // ═══════════════════════════════════════════════════════
 // STATE
@@ -696,6 +742,9 @@ function renderDisplay() {
   const topTeams  = ranked.slice(0, TOP_N);
   const restTeams = ranked.slice(TOP_N);
 
+  // Recalculate slot height to fit everything on screen
+  computeSlotH(restTeams.length);
+
   // ── Size the tile container to exactly fit the top-N tiles ──
   const boardH = Math.min(topTeams.length, TOP_N) * SLOT_H
                + (Math.min(topTeams.length, TOP_N) - 1) * SLOT_GAP;
@@ -824,6 +873,11 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     revealNext();
   }
+});
+
+// Recompute layout on resize (e.g. entering fullscreen)
+window.addEventListener('resize', () => {
+  if (currentPage() === 'display' && state.revealedRound > 0) renderDisplay();
 });
 </script>
 </body>
