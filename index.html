@@ -109,6 +109,28 @@
   .team-chip .remove:hover { color: var(--red); }
   .empty-note { color: var(--slate-400); font-size: 14px; }
 
+  /* ── Gist sync card ── */
+  .sync-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .sync-row label.field { flex: 1; min-width: 160px; }
+  .sync-row label.field input { font-family: 'DM Mono', monospace; font-size: 13px; }
+  .sync-status {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 12px; font-size: 13px; color: var(--slate-400);
+    min-height: 22px;
+  }
+  .sync-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--slate-200); flex-shrink: 0;
+    transition: background .3s;
+  }
+  .sync-dot.ok      { background: var(--green); }
+  .sync-dot.err     { background: var(--red); }
+  .sync-dot.busy    { background: var(--gold); animation: spin-pulse .8s ease-in-out infinite; }
+  @keyframes spin-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .sync-hint { font-size: 12px; color: var(--slate-400); margin-top: 8px; line-height: 1.6; }
+  .sync-hint a { color: var(--indigo-500); text-decoration: none; }
+  .sync-hint a:hover { text-decoration: underline; }
+
   .score-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; min-width: 480px; }
   th { padding: 9px 8px; font-size: 11px; font-weight: 800; color: var(--slate-400);
@@ -425,6 +447,28 @@
       </div>
     </div>
 
+    <div class="card">
+      <h2>☁️ Sync via GitHub Gist</h2>
+      <div class="sync-row">
+        <label class="field">GitHub Token
+          <input type="password" id="inp-token" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off"/>
+        </label>
+        <label class="field">Gist ID
+          <input type="text" id="inp-gist" placeholder="Leeg laten = nieuwe Gist aanmaken"/>
+        </label>
+        <button class="btn-primary" onclick="gistConnect()">Verbinden</button>
+      </div>
+      <div class="sync-status">
+        <div class="sync-dot" id="sync-dot"></div>
+        <span id="sync-msg">Niet verbonden — vul token in en klik Verbinden</span>
+      </div>
+      <div class="sync-hint">
+        Token aanmaken: <a href="https://github.com/settings/tokens/new" target="_blank">github.com/settings/tokens/new</a>
+        → selecteer alleen <strong>gist</strong> scope → kopieer token hierboven.
+        De Gist ID wordt automatisch opgeslagen zodat je hem maar één keer hoeft in te vullen.
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -510,9 +554,157 @@ const BAR_COLOURS = [
 let bc;
 try { bc = new BroadcastChannel(BC_CHANNEL); } catch(e) {}
 
+// ═══════════════════════════════════════════════════════
+// GIST SYNC
+// ═══════════════════════════════════════════════════════
+const GIST_LS_KEY   = 'quiz_gist_config';
+const GIST_FILENAME = 'quiz-state.json';
+let gistId    = '';
+let gistToken = '';
+let syncPollInterval = null;
+let lastGistEtag     = '';
+let syncEnabled      = false;
+
+function gistSetStatus(state, msg) {
+  const dot = document.getElementById('sync-dot');
+  const txt = document.getElementById('sync-msg');
+  if (!dot || !txt) return;
+  dot.className = 'sync-dot ' + state;
+  txt.textContent = msg;
+}
+
+async function gistConnect() {
+  const tokenEl = document.getElementById('inp-token');
+  const gistEl  = document.getElementById('inp-gist');
+  const token   = tokenEl?.value.trim();
+  const gid     = gistEl?.value.trim();
+
+  if (!token) { gistSetStatus('err', 'Voer eerst een token in'); return; }
+
+  gistToken = token;
+  gistSetStatus('busy', 'Verbinden…');
+
+  if (gid) {
+    // Connect to existing Gist
+    gistId = gid;
+    const ok = await gistPush(false);
+    if (ok) {
+      gistSetStatus('ok', 'Verbonden met bestaande Gist ✓');
+      gistSaveConfig();
+      gistStartPoll();
+    }
+  } else {
+    // Create new Gist
+    try {
+      const res = await fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: { Authorization: 'token ' + gistToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: 'Quiz Scorebord State',
+          public: false,
+          files: { [GIST_FILENAME]: { content: JSON.stringify(state, null, 2) } }
+        })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      gistId = data.id;
+      if (gistEl) gistEl.value = gistId;
+      gistSetStatus('ok', `Nieuwe Gist aangemaakt: ${gistId} ✓`);
+      gistSaveConfig();
+      gistStartPoll();
+    } catch(e) {
+      gistSetStatus('err', 'Aanmaken mislukt: ' + e.message);
+    }
+  }
+}
+
+async function gistPush(silent = true) {
+  if (!gistToken || !gistId) return false;
+  if (!silent) gistSetStatus('busy', 'Opslaan…');
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: { Authorization: 'token ' + gistToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify(state, null, 2) } } })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!silent) gistSetStatus('ok', 'Opgeslagen ✓ — ' + new Date().toLocaleTimeString());
+    syncEnabled = true;
+    return true;
+  } catch(e) {
+    gistSetStatus('err', 'Opslaan mislukt: ' + e.message);
+    return false;
+  }
+}
+
+async function gistPull() {
+  if (!gistToken || !gistId) return;
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: {
+        Authorization: 'token ' + gistToken,
+        'If-None-Match': lastGistEtag
+      }
+    });
+    if (res.status === 304) return; // not modified
+    if (!res.ok) { gistSetStatus('err', 'Pull mislukt: HTTP ' + res.status); return; }
+    lastGistEtag = res.headers.get('ETag') || '';
+    const data    = await res.json();
+    const content = data.files?.[GIST_FILENAME]?.content;
+    if (!content) return;
+    const remote  = JSON.parse(content);
+    // Only apply if remote is newer / different
+    if (JSON.stringify(remote) !== JSON.stringify(state)) {
+      state = remote;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (bc) bc.postMessage({ type: 'state', state });
+      if (currentPage() === 'admin')   renderAdmin();
+      if (currentPage() === 'display') renderDisplay();
+      gistSetStatus('ok', 'Gesynchroniseerd ✓ — ' + new Date().toLocaleTimeString());
+    }
+  } catch(e) { /* silent fail on poll */ }
+}
+
+function gistStartPoll() {
+  clearInterval(syncPollInterval);
+  syncPollInterval = setInterval(gistPull, 4000);
+}
+
+function gistSaveConfig() {
+  localStorage.setItem(GIST_LS_KEY, JSON.stringify({ gistId, gistToken }));
+}
+
+function gistLoadConfig() {
+  try {
+    const cfg = JSON.parse(localStorage.getItem(GIST_LS_KEY) || '{}');
+    if (cfg.gistId && cfg.gistToken) {
+      gistId    = cfg.gistId;
+      gistToken = cfg.gistToken;
+      const tokenEl = document.getElementById('inp-token');
+      const gistEl  = document.getElementById('inp-gist');
+      if (tokenEl) tokenEl.value = gistToken;
+      if (gistEl)  gistEl.value  = gistId;
+      gistSetStatus('busy', 'Herstellen verbinding…');
+      gistPull().then(() => {
+        gistSetStatus('ok', 'Verbonden ✓');
+        gistStartPoll();
+        syncEnabled = true;
+      });
+    }
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════
+// STATE SAVE / LOAD
+// ═══════════════════════════════════════════════════════
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (bc) bc.postMessage({ type: 'state', state });
+  // Push to Gist after every change (debounced)
+  if (syncEnabled) {
+    clearTimeout(saveState._t);
+    saveState._t = setTimeout(() => gistPush(false), 600);
+  }
 }
 
 function loadState() {
@@ -870,6 +1062,8 @@ loadState();
 document.getElementById('inp-title').value  = state.quizTitle;
 document.getElementById('inp-rounds').value = state.totalRounds;
 showPage(currentPage());
+// Restore Gist connection if previously configured
+gistLoadConfig();
 
 // Spacebar → presenteer volgende ronde (werkt op beide pagina's)
 document.addEventListener('keydown', (e) => {
