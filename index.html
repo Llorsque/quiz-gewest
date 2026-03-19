@@ -680,8 +680,20 @@ async function gistPull(force = false) {
       state = remote;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       if (bc) bc.postMessage({ type: 'state', state });
-      if (currentPage() === 'admin')   renderAdmin();
-      if (currentPage() === 'display') renderDisplay();
+      if (currentPage() === 'display') {
+        renderDisplay();
+      } else {
+        // Full re-render admin so names, scores, teams all update
+        // Re-fill setup inputs in case title/rounds changed
+        document.getElementById('inp-title').value  = state.quizTitle;
+        document.getElementById('inp-rounds').value = state.totalRounds;
+        renderAdmin();
+        // Also update any live display tiles
+        state.teams.forEach(t => {
+          const tile = document.getElementById('tile-' + t.id);
+          if (tile) { const lbl = tile.querySelector('.team-label'); if (lbl) lbl.textContent = t.name; }
+        });
+      }
     }
   } catch(e) { /* silent fail */ }
 }
@@ -845,7 +857,21 @@ function removeTeam(id) {
 
 function renameTeam(id, name) {
   const t = state.teams.find(t => t.id === id);
-  if (t) { t.name = name; saveState(); }
+  if (!t || t.name === name) return;
+  t.name = name;
+  saveState();
+
+  // Update name in scores table without full re-render (keeps focus/cursor intact)
+  const nameCell = document.getElementById('teamname-' + id);
+  if (nameCell) nameCell.childNodes[1] && (nameCell.childNodes[1].textContent = name)
+    || (nameCell.textContent = name);
+
+  // Update the label inside the display tile if visible
+  const tile = document.getElementById('tile-' + id);
+  if (tile) {
+    const lbl = tile.querySelector('.team-label');
+    if (lbl) lbl.textContent = name;
+  }
 }
 
 function setScore(teamId, roundIdx, val) {
@@ -893,10 +919,10 @@ function renderAdmin() {
     list.innerHTML = '<span class="empty-note">Nog geen teams aangemaakt.</span>';
   } else {
     list.innerHTML = state.teams.map((t, i) => `
-      <div class="team-chip">
+      <div class="team-chip" id="chip-${t.id}">
         <div class="dot" style="background:${BAR_COLOURS[i % BAR_COLOURS.length]}"></div>
         <input type="text" value="${esc(t.name)}"
-          onchange="renameTeam(${t.id},this.value)"
+          oninput="renameTeam(${t.id},this.value)"
           onblur="renameTeam(${t.id},this.value)"/>
         <button class="remove" onclick="removeTeam(${t.id})">×</button>
       </div>`).join('');
@@ -919,7 +945,7 @@ function renderAdmin() {
 
   const tbody = state.teams.map((t, ti) => `
     <tr>
-      <td class="team-name-cell"><span style="color:${BAR_COLOURS[ti%BAR_COLOURS.length]};margin-right:6px">●</span>${esc(t.name)}</td>
+      <td class="team-name-cell" id="teamname-${t.id}"><span style="color:${BAR_COLOURS[ti%BAR_COLOURS.length]};margin-right:6px">●</span>${esc(t.name)}</td>
       ${cols.map(r => `
         <td style="text-align:center">
           <input type="number" class="score-input${r < state.revealedRound ? ' revealed' : ''}"
